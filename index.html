@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1a73e8">
+<title>Riyaz Attendance</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>">
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1b1f24;--mu:#5f6b7a;--ac:#1a73e8;--bd:#dde2e8;--bad:#c5221f;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1318;--card:#1a2028;--tx:#e8ecf0;--mu:#9aa6b2;--ac:#6ea8fe;--bd:#2c3540;--bad:#f28b82;color-scheme:dark}}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:640px;margin:0 auto;padding:12px}
+h1{font-size:19px;margin:6px 0 10px}h4{margin:14px 0 4px;font-size:14px}
+.tabs{display:flex;gap:6px;margin-bottom:10px}
+.tabs button{flex:1;padding:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;font:inherit}
+.tabs button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:10px}
+input,select,textarea{width:100%;padding:11px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);font:inherit;margin:4px 0}
+textarea{min-height:90px}
+.btn{padding:11px 14px;border:0;border-radius:10px;background:var(--ac);color:#fff;font:inherit;font-weight:600}
+.btn.s{background:var(--bd);color:var(--tx);font-weight:500}.btn.r{background:var(--bad)}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--bd)}
+.row select{width:48%}small,.mu{color:var(--mu)}
+pre{white-space:pre-wrap;word-break:break-word;font:15px/1.5 ui-monospace,Menlo,Consolas,monospace;margin:0}
+#msg{padding:8px 2px;color:var(--mu)}#msg.e{color:var(--bad)}
+ul{margin:4px 0;padding-left:18px}[hidden]{display:none!important}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+</style>
+</head>
+<body>
+<main>
+<h1>📋 Riyaz Attendance</h1>
+<div class="tabs"><button data-t="rep" class="on">Report</button><button data-t="stu">Students</button><button data-t="set">Settings</button></div>
+<div id="msg"></div>
+
+<section id="rep">
+  <div class="card">
+    <label>Google Meet link</label>
+    <input id="link" placeholder="https://meet.google.com/abc-defg-hij" inputmode="url" autocapitalize="off">
+    <label>Date (khaali = sabse nayi call)</label>
+    <input id="date" type="date">
+    <button class="btn" id="go" style="width:100%;margin-top:6px">Attendance banao</button>
+  </div>
+  <div id="out" hidden>
+    <div class="card"><pre id="rep-t"></pre>
+      <div class="g" style="margin-top:10px"><button class="btn" id="copy">Copy</button><button class="btn s" id="share">Share</button></div>
+    </div>
+    <div class="card" id="notes"></div>
+  </div>
+</section>
+
+<section id="stu" hidden>
+  <div class="card">
+    <div style="display:flex;gap:8px"><input id="newn" placeholder="Naye student ka naam" style="margin:0"><button class="btn" id="add">Add</button></div>
+  </div>
+  <div class="card"><b id="cnt"></b><div id="list"></div></div>
+  <div class="card">
+    <b>Backup / doosre phone pe bhejna</b>
+    <textarea id="ie" placeholder="Yahan list ka code paste karke Import dabao"></textarea>
+    <div class="g"><button class="btn s" id="exp">Export (copy)</button><button class="btn" id="imp">Import</button></div>
+  </div>
+</section>
+
+<section id="set" hidden>
+  <div class="card">
+    <label>Google Client ID</label><input id="s-cid" placeholder="xxxx.apps.googleusercontent.com" autocapitalize="off">
+    <div class="g">
+      <div><label>Class shuru</label><input id="s-start" type="time"></div>
+      <div><label>Minimum rukna (tak)</label><input id="s-min" type="time"></div>
+      <div><label>On time (min)</label><input id="s-on" type="number" min="0"></div>
+      <div><label>Late allowed (min tak)</label><input id="s-late" type="number" min="0"></div>
+    </div>
+    <label>Hafte mein max late (usse zyada = absent)</label><input id="s-max" type="number" min="0">
+    <button class="btn" id="s-save" style="width:100%;margin-top:6px">Save</button>
+  </div>
+</section>
+</main>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+const CLIENT_ID = ""; // apna Web client ID yahan daalo (ya Settings mein)
+const SCOPE = "https://www.googleapis.com/auth/meetings.space.readonly";
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const LS = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d } catch (e) { return d } };
+const SV = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+const DEF = {start:"05:00", onGrace:1, lateGrace:5, maxLate:2, minStay:"05:30", cid:""};
+const cfg = () => ({...DEF, ...LS("att_cfg", {})});
+const cid = () => CLIENT_ID || cfg().cid;
+let roster = LS("att_roster", []), hist = LS("att_hist", {}), last = null;
+
+const p2 = n => String(n).padStart(2, "0"), hm = s => s.split(":").map(Number);
+const ist = ms => { const d = new Date(ms + 19800000); return {day:`${d.getUTCFullYear()}-${p2(d.getUTCMonth()+1)}-${p2(d.getUTCDate())}`, h:d.getUTCHours(), m:d.getUTCMinutes()}; };
+const at = (day, h, m) => { const [y, mo, d] = day.split("-").map(Number); return Date.UTC(y, mo-1, d, h, m) - 19800000; };
+const t12 = ms => { const d = ist(ms); return `${p2(d.h % 12 || 12)}:${p2(d.m)} ${d.h < 12 ? "AM" : "PM"}`; };
+const weekOf = day => { const [y, mo, d] = day.split("-").map(Number); return Date.UTC(y, mo-1, d - (new Date(Date.UTC(y, mo-1, d)).getUTCDay() + 6) % 7); };
+const norm = s => (s || "").toLowerCase().replace(/\(.*?\)/g, " ").replace(/[^\p{L}\p{N}\s]|_/gu, " ").replace(/\s+/g, " ").trim();
+function lev(a, b) { const m = a.length, n = b.length, d = Array.from({length:m+1}, (_, i) => [i]); for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1)); return d[m][n]; }
+const sim = (a, b) => { const m = Math.max(a.length, b.length); return m ? 1 - lev(a, b) / m : 1; };
+
+function msg(t, err) { const m = $("#msg"); m.textContent = t; m.className = err ? "e" : ""; }
+function friendly(e) { const t = String(e.message || e);
+  if (/Failed to fetch|NetworkError/i.test(t)) return "Network ya CORS error. Check karo: Client ID sahi hai, aur app ka address OAuth client ke Authorized JavaScript origins mein hai.";
+  if (/403|access_denied/i.test(t)) return "Google ne mana kiya (403). Check karo: Meet REST API enable hai, aur tumhari Gmail Test user hai. " + t.slice(0, 120);
+  return t; }
+
+/* ---------- Google login + API ---------- */
+let tok = {t:null, exp:0};
+function getToken() { return new Promise((res, rej) => {
+  if (tok.t && Date.now() < tok.exp - 60000) return res(tok.t);
+  if (!cid()) return rej(new Error("Pehle Settings mein Google Client ID daalo."));
+  if (!window.google) return rej(new Error("Google ki script load nahi hui. Internet check karo."));
+  google.accounts.oauth2.initTokenClient({client_id:cid(), scope:SCOPE,
+    callback: r => { if (r.error) return rej(new Error(r.error)); tok = {t:r.access_token, exp:Date.now() + r.expires_in * 1000}; localStorage.setItem("att_ok", "1"); res(tok.t); },
+    error_callback: e => rej(new Error("Login nahi hua: " + (e.type || "popup band ho gaya")))
+  }).requestAccessToken({prompt: localStorage.getItem("att_ok") ? "" : "consent"}); }); }
+async function api(path, params) { const u = new URL("https://meet.googleapis.com/v2/" + path); for (const k in params) u.searchParams.set(k, params[k]);
+  const r = await fetch(u, {headers:{Authorization:"Bearer " + await getToken()}});
+  if (!r.ok) throw new Error("Google " + r.status + ": " + (await r.text()).slice(0, 200)); return r.json(); }
+async function listAll(path, key, params = {}) { let out = [], pt; do { const j = await api(path, {...params, ...(pt ? {pageToken:pt} : {})}); out = out.concat(j[key] || []); pt = j.nextPageToken; } while (pt); return out; }
+
+async function fetchPeople(code, want) {
+  const recs = await listAll("conferenceRecords", "conferenceRecords", {filter:`space.meeting_code = "${code}"`, pageSize:100});
+  if (!recs.length) return {day:null, people:{}};
+  recs.forEach(r => { r._s = Date.parse(r.startTime); r._e = r.endTime ? Date.parse(r.endTime) : null; });
+  const day = want || recs.map(r => ist(r._s).day).sort().pop(), people = {}, now = Date.now();
+  await Promise.all(recs.filter(r => ist(r._s).day === day).map(async r => {
+    const parts = await listAll(r.name + "/participants", "participants", {pageSize:250});
+    await Promise.all(parts.map(async p => {
+      const su = p.signedinUser || {}, id = su.user || null;
+      const name = su.displayName || (p.anonymousUser || {}).displayName || (p.phoneUser || {}).displayName || "Unknown";
+      const e = people[id || "guest:" + name] ||= {id, name, sessions:[]};
+      (await listAll(p.name + "/participantSessions", "participantSessions", {pageSize:250}))
+        .forEach(s => e.sessions.push([Date.parse(s.startTime), s.endTime ? Date.parse(s.endTime) : (r._e || now)]));
+    }));
+  }));
+  return {day, people};
+}
+
+/* ---------- rules ---------- */
+function lateBefore(name, day) { const w = weekOf(day); return Object.keys(hist).filter(d => d < day && weekOf(d) === w && (hist[d][name] || {}).late).length; }
+function evaluate(day, ss, lb) {
+  const c = cfg(), cs = at(day, ...hm(c.start)), onT = cs + c.onGrace * 60000, lateU = cs + c.lateGrace * 60000, minS = at(day, ...hm(c.minStay));
+  if (!ss.length) return {st:"absent", late:false, note:"", why:"none"};
+  const fj = Math.min(...ss.map(s => s[0])), ll = Math.max(...ss.map(s => s[1])), jm = Math.floor(fj / 60000) * 60000, b = {fj, ll};
+  if (jm > lateU) return {...b, st:"absent", late:false, note:"late join at " + t12(fj), why:"after"};
+  if (ll < minS) return {...b, st:"absent", late:false, note:"left at " + t12(ll), why:"left"};
+  if (jm <= onT) return {...b, st:"present", late:false, note:t12(cs), why:""};
+  const n = lb + 1;
+  if (n > c.maxLate) return {...b, st:"absent", late:true, n, note:`late join at ${t12(fj)}, late #${n} this week`, why:"over"};
+  return {...b, st:"present", late:true, n, note:"late join at " + t12(fj), why:"late"};
+}
+function match(p, R) {
+  if (p.id) { const s = R.find(s => (s.ids || []).includes(p.id)); if (s) return {s, how:"id"}; }
+  const n = norm(p.name), ex = R.find(s => norm(s.name) === n || (s.aliases || []).some(a => norm(a) === n)); if (ex) return {s:ex, how:"exact"};
+  const f = n.split(" ")[0]; if (!f) return null;
+  const c = R.filter(s => { const rf = norm(s.name).split(" ")[0]; return rf && (rf === f || sim(rf, f) >= .85); });
+  return c.length === 1 ? {s:c[0], how: norm(c[0].name).split(" ")[0] === f ? "first" : "spelling"} : null;
+}
+function build(day, people) {
+  const R = roster.length ? roster : [...new Set(Object.values(people).map(p => p.name))].sort().map(n => ({name:n}));
+  const by = {}, how = {}, unm = [];
+  for (const [k, p] of Object.entries(people)) { const m = match(p, R); if (m) { (by[m.s.name] ||= []).push(...p.sessions); how[k] = m; } else unm.push(k); }
+  const res = R.map(s => [s.name, evaluate(day, by[s.name] || [], lateBefore(s.name, day))]);
+  const P = res.filter(r => r[1].st === "present"), A = res.filter(r => r[1].st === "absent");
+  const ln = (r, i) => `${i + 1}). ${r[0]}${r[1].note ? ` ( ${r[1].note} )` : ""}`;
+  const [y, mo, d] = day.split("-").map(Number);
+  const text = [`Date - ${p2(d)}-${p2(mo)}-${String(y).slice(2)}`, `Day - ${new Date(Date.UTC(y, mo-1, d)).toLocaleDateString("en-US", {weekday:"long", timeZone:"UTC"})}`, "",
+    "Present students:-", "", ...P.map(ln), "", "Absent students:-", "", ...A.map(ln), "",
+    `Total students:-${R.length}`, `Present students:-${P.length}`, `Absent students:-${A.length}`].join("\n");
+  return {text, res, unm, how, entry:Object.fromEntries(res.map(r => [r[0], {late:r[1].late}]))};
+}
+
+/* ---------- report screen ---------- */
+function render() {
+  if (!last) return; const {day, people} = last, o = build(day, people);
+  $("#rep-t").textContent = o.text; $("#out").hidden = false;
+  if (roster.length) { hist[day] = o.entry; SV("att_hist", hist); }
+  const sec = (t, a) => a.length ? `<h4>${t}</h4><ul>${a.map(x => `<li>${x}</li>`).join("")}</ul>` : "";
+  const by = w => o.res.filter(r => r[1].why === w).map(r => esc(r[0]));
+  let h = roster.length ? "" : `<p class="mu">Students ki list khaali hai, isliye Meet ke naam se hi list bani hai. Students tab mein list Import karo.</p>`;
+  h += sec("Late par present (is hafte ka count)", o.res.filter(r => r[1].why === "late").map(r => `${esc(r[0])}: ${r[1].n}/${cfg().maxLate}`));
+  h += sec("Baar-baar late hone se absent", by("over"));
+  h += sec("05:30 se pehle nikal gaye, absent (check karo)", o.res.filter(r => r[1].why === "left").map(r => `${esc(r[0])}: ${t12(r[1].ll)} pe nikla`));
+  h += sec("Naam ke spelling se match kiya (check karo)", Object.entries(o.how).filter(([k, m]) => m.how === "spelling").map(([k, m]) => `${esc(people[k].name)} to ${esc(m.s.name)}`));
+  h += sec("Meet record hi nahi mila (kisi aur account se aaye?)", by("none"));
+  if (o.unm.length) h += `<h4>Ye Meet accounts kisi student se nahi mile. Tap karke batao kaun hai</h4>` + o.unm.map(k => { const p = people[k];
+    return `<div class="row"><div><b>${esc(p.name)}</b><br><small>${p.id ? "" : "guest, "}aaya ${t12(Math.min(...p.sessions.map(s => s[0])))}</small></div><select data-k="${esc(k)}"><option value="">Kaun hai?</option>${roster.map((s, i) => `<option value="${i}">${esc(s.name)}</option>`).join("")}<option value="new">+ Naya student</option></select></div>`; }).join("");
+  $("#notes").innerHTML = h || "<span class='mu'>Sab clear hai.</span>"; $("#notes").hidden = false;
+}
+$("#notes").addEventListener("change", e => { const k = e.target.dataset.k; if (!k || !e.target.value) return; const p = last.people[k];
+  const s = e.target.value === "new" ? (roster.push({name:p.name, aliases:[], ids:[]}), roster[roster.length - 1]) : roster[+e.target.value];
+  if (p.id) (s.ids ||= []).push(p.id); else (s.aliases ||= []).push(p.name);
+  SV("att_roster", roster); render(); drawStudents(); });
+$("#go").onclick = async () => {
+  const code = ($("#link").value.toLowerCase().match(/[a-z]{3}-[a-z]{4}-[a-z]{3}/) || [])[0];
+  if (!code) return msg("Link mein meeting code nahi mila. Aisa link do: https://meet.google.com/abc-defg-hij", 1);
+  msg("Meet se data la raha hoon..."); $("#go").disabled = true;
+  try { const r = await fetchPeople(code, $("#date").value || null);
+    if (!r.day) msg("Is link ki koi call nahi mili. Sirf wahi calls dikhti hain jinme tum khud shamil the.", 1);
+    else { last = r; msg("Call ki date: " + r.day); render(); }
+  } catch (e) { msg(friendly(e), 1); } $("#go").disabled = false; };
+$("#copy").onclick = async () => { try { await navigator.clipboard.writeText($("#rep-t").textContent); msg("Copy ho gaya, WhatsApp mein paste karo."); }
+  catch (e) { const r = document.createRange(); r.selectNodeContents($("#rep-t")); getSelection().removeAllRanges(); getSelection().addRange(r); msg("Select ho gaya, haath se copy karo."); } };
+$("#share").onclick = () => navigator.share ? navigator.share({text:$("#rep-t").textContent}) : msg("Is browser mein Share nahi hai, Copy use karo.", 1);
+
+/* ---------- students screen ---------- */
+function drawStudents() {
+  $("#cnt").textContent = roster.length + " students";
+  $("#list").innerHTML = roster.map((s, i) => `<div class="row"><div><b>${esc(s.name)}</b><br><small>${(s.aliases || []).length} alias, ${(s.ids || []).length} Google ID</small></div><div><button class="btn s" data-a="al" data-i="${i}">Alias</button> <button class="btn r" data-a="del" data-i="${i}">X</button></div></div>`).join(""); }
+$("#list").addEventListener("click", e => { const a = e.target.dataset.a, s = roster[+e.target.dataset.i]; if (!a) return;
+  if (a === "del" && confirm(s.name + " ko hata dein?")) roster.splice(+e.target.dataset.i, 1);
+  if (a === "al") { const v = prompt("Is student ke Google naam (comma se alag):", (s.aliases || []).join(", ")); if (v === null) return; s.aliases = v.split(",").map(x => x.trim()).filter(Boolean); }
+  SV("att_roster", roster); drawStudents(); render(); });
+$("#add").onclick = () => { const n = $("#newn").value.trim(); if (!n) return; if (roster.some(s => norm(s.name) === norm(n))) return msg("Ye naam pehle se hai.", 1);
+  roster.push({name:n, aliases:[], ids:[]}); $("#newn").value = ""; SV("att_roster", roster); drawStudents(); msg(n + " add ho gaya."); };
+$("#exp").onclick = async () => { $("#ie").value = JSON.stringify(roster); try { await navigator.clipboard.writeText($("#ie").value); msg("List ka code copy ho gaya. WhatsApp pe bhej sakte ho."); } catch (e) { msg("Upar box se haath se copy karo."); } };
+$("#imp").onclick = () => { try { const a = JSON.parse($("#ie").value); if (!Array.isArray(a) || a.some(x => !x.name)) throw 0;
+    if (!confirm(a.length + " students import honge. Purani list replace ho jaayegi. Theek hai?")) return;
+    roster = a.map(x => ({name:String(x.name), aliases:x.aliases || [], ids:x.ids || []})); SV("att_roster", roster); drawStudents(); render(); msg("Import ho gaya.");
+  } catch (e) { msg("Ye list ka sahi code nahi hai.", 1); } };
+
+/* ---------- settings + tabs ---------- */
+const F = {"s-cid":"cid", "s-start":"start", "s-min":"minStay", "s-on":"onGrace", "s-late":"lateGrace", "s-max":"maxLate"};
+function drawSettings() { const c = cfg(); for (const id in F) $("#" + id).value = c[F[id]]; }
+$("#s-save").onclick = () => { const c = {}; for (const id in F) { const v = $("#" + id).value.trim(); c[F[id]] = ["onGrace", "lateGrace", "maxLate"].includes(F[id]) ? Number(v) : v; }
+  SV("att_cfg", c); msg("Settings save ho gayi."); render(); };
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
+  ["rep", "stu", "set"].forEach(id => $("#" + id).hidden = id !== b.dataset.t); msg(""); });
+drawStudents(); drawSettings();
+if (!cid()) msg("Pehle Settings tab mein Google Client ID daalo.", 1);
+</script>
+</body>
+</html>
